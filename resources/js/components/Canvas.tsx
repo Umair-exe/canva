@@ -7,6 +7,7 @@ interface TextNode {
     y: number;
     text: string;
     type: 'text' | 'heading' | 'subheading';
+    width?: number;
 }
 
 interface CanvasProps {
@@ -14,9 +15,10 @@ interface CanvasProps {
     selectedId: string | null;
     onChange: (nodes: TextNode[]) => void;
     onSelect: (id: string | null) => void;
+    onDuplicate: () => void;
 }
 
-const Canvas: React.FC<CanvasProps> = ({ textNodes, selectedId, onChange, onSelect }) => {
+const Canvas: React.FC<CanvasProps> = ({ textNodes, selectedId, onChange, onSelect, onDuplicate }) => {
     const stageRef = React.useRef<any>(null);
     const transformerRef = React.useRef<any>(null);
     const containerRef = React.useRef<HTMLDivElement>(null);
@@ -55,37 +57,38 @@ const Canvas: React.FC<CanvasProps> = ({ textNodes, selectedId, onChange, onSele
             if (e.key === 'Delete' && selectedId) {
                 handleDelete(selectedId);
             }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedId) {
+                e.preventDefault();
+                onDuplicate();
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedId]);
+    }, [selectedId, onDuplicate]);
 
     const getFontProps = (type: string) => {
         switch (type) {
             case 'heading':
                 return {
-                    fontSize: 32,
+                    fontSize: 92,
                     fontStyle: 'bold',
                     fill: '#1a1a1a',
                     padding: 5,
-                    width: 300,
                 };
             case 'subheading':
                 return {
-                    fontSize: 24,
+                    fontSize: 72,
                     fontStyle: 'bold',
                     fill: '#333333',
                     padding: 5,
-                    width: 300,
                 };
             default:
                 return {
-                    fontSize: 16,
+                    fontSize: 56,
                     fontStyle: 'normal',
                     fill: '#4a4a4a',
                     padding: 5,
-                    width: 300,
                 };
         }
     };
@@ -98,22 +101,18 @@ const Canvas: React.FC<CanvasProps> = ({ textNodes, selectedId, onChange, onSele
         const textNode = stage.findOne(`#${nodeId}`);
         const stageBox = stage.container().getBoundingClientRect();
 
-        // Calculate position relative to stage
         const textPosition = textNode.absolutePosition();
-
-        // Create textarea
         const textarea = document.createElement('textarea');
         document.body.appendChild(textarea);
 
         const fontProps = getFontProps(node.type);
 
-        // Position and style textarea
         textarea.value = node.text;
         textarea.style.position = 'absolute';
         textarea.style.top = `${stageBox.top + textPosition.y}px`;
         textarea.style.left = `${stageBox.left + textPosition.x}px`;
-        textarea.style.width = `${Math.max(textNode.width(), fontProps.width)}px`;
-        textarea.style.height = `${textNode.height() + 10}px`;
+        textarea.style.width = `${node.width || 300}px`;
+        textarea.style.height = `${textNode.height() + 50}px`;
         textarea.style.fontSize = `${fontProps.fontSize}px`;
         textarea.style.border = '1px solid #999';
         textarea.style.padding = '5px';
@@ -164,7 +163,6 @@ const Canvas: React.FC<CanvasProps> = ({ textNodes, selectedId, onChange, onSele
 
         textarea.addEventListener('blur', removeTextarea);
 
-        // Handle clicks outside textarea
         setTimeout(() => {
             window.addEventListener('click', handleOutsideClick);
         });
@@ -173,7 +171,7 @@ const Canvas: React.FC<CanvasProps> = ({ textNodes, selectedId, onChange, onSele
     const handleDelete = (nodeId: string) => {
         const updatedNodes = textNodes.filter(node => node.id !== nodeId);
         onChange(updatedNodes);
-        onSelect(null); // Deselect the deleted node
+        onSelect(null);
     };
 
     return (
@@ -198,6 +196,8 @@ const Canvas: React.FC<CanvasProps> = ({ textNodes, selectedId, onChange, onSele
                             y={node.y}
                             text={node.text}
                             draggable
+                            width={node.width}
+                            wrap="word"
                             {...getFontProps(node.type)}
                             onClick={() => {
                                 if (editingId !== node.id) {
@@ -217,6 +217,17 @@ const Canvas: React.FC<CanvasProps> = ({ textNodes, selectedId, onChange, onSele
                                         : item
                                 );
                                 onChange(nodes);
+                            }}
+                            onTransformEnd={(e) => {
+                                const scaleX = e.target.scaleX();
+                                const width = Math.max(50, e.target.width() * scaleX); // Ensure minimum width
+                                const updatedNodes = textNodes.map((item) =>
+                                    item.id === node.id
+                                        ? { ...item, width: width, scaleX: 1 } // Reset scaleX after resizing
+                                        : item
+                                );
+                                onChange(updatedNodes);
+                                e.target.scaleX(1);
                             }}
                         />
                     ))}
